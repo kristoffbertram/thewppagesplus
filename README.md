@@ -1,6 +1,6 @@
 # The WP Pages Plus
 
-_1.0.0_
+_1.1.0_
 
 Fixes the three things that make WP Admin list tables (Pages, Posts, and any
 custom post type) painful on larger, deeply-structured sites.
@@ -20,6 +20,10 @@ custom post type) painful on larger, deeply-structured sites.
     direct children;
   - a **Parent** column showing the parent title (linked to that filtered
     view) and sortable to group siblings together.
+  - filtering to a parent keeps the **manual (menu) order** intact, not A–Z.
+- **Duplicate row action** — one-click "Duplicate" on every row: clones the
+  content, excerpt, parent, menu order, taxonomy terms, and post meta into a
+  new **draft** titled "… (Copy)", then opens it in the editor.
 
 ## Why this exists
 
@@ -42,9 +46,12 @@ type. There is no settings page.
 ## Technical notes
 
 - Admin only; everything is scoped to `edit.php` and the screen's post type.
-- The path is appended via a tightly-scoped `the_title` filter; quick-edit
-  reads the raw `post_title`, so the inline editor stays clean.
+- The path is captured during a scoped `the_title` filter and injected under
+  the title with a small footer script — WP `esc_html()`s the list-table title,
+  so appended markup can't render there directly.
 - Modified/Parent sorting use native `WP_Query` orderby — no custom SQL.
+- Duplicate runs through `admin_action_*` with a per-post nonce and an
+  `edit_post` capability check.
 - Attachments are skipped (the media library is a separate screen).
 
 ## License
@@ -53,6 +60,8 @@ MIT — see `LICENSE`.
 
 ## Changelog
 
+- 1.1.0 Path now renders reliably (footer-injected, was escaped by core).
+  Parent filter preserves manual menu order. Added Duplicate row action.
 - 1.0.0 Release.
 
 ## Disclaimer
