@@ -5,7 +5,7 @@
  * Author: Kristoff Bertram
  * Author URI: https://kristoffbertram.be
  * Plugin URI: https://github.com/kristoffbertram/thewppagesplus
- * Version: 1.3.0
+ * Version: 1.4.0
  * License: MIT
  * License URI: https://opensource.org/licenses/MIT
  * Text Domain: thewppagesplus
@@ -17,6 +17,7 @@ const THEWPPAGESPLUS_COL_MODIFIED = 'thewppagesplus_modified';
 const THEWPPAGESPLUS_COL_PARENT   = 'thewppagesplus_parent';
 const THEWPPAGESPLUS_PARENT_QV    = 'thewppagesplus_parent';
 const THEWPPAGESPLUS_PARENT_SORT  = 'thewppagesplus_parent';
+const THEWPPAGESPLUS_TOP_VALUE    = 'top'; // parent-filter sentinel: top level only
 const THEWPPAGESPLUS_DUP_ACTION   = 'thewppagesplus_duplicate';
 
 /**
@@ -90,22 +91,33 @@ add_action('load-edit.php', function () {
 });
 
 /**
- * Currently-filtered parent ID for an edit.php main query (0 if none / N/A).
+ * Raw parent-filter value for an edit.php main query on a hierarchical type:
+ * '' (none/N/A), 'top' (top level only), or a numeric string (a parent ID).
  */
-function thewppagesplus_current_parent_filter(WP_Query $query): int {
+function thewppagesplus_parent_filter_raw(WP_Query $query): string {
 	global $pagenow;
 	if ( ! is_admin() || 'edit.php' !== $pagenow || ! $query->is_main_query() ) {
-		return 0;
+		return '';
 	}
-	$parent = isset($_GET[THEWPPAGESPLUS_PARENT_QV]) ? (int) $_GET[THEWPPAGESPLUS_PARENT_QV] : 0;
-	if ( $parent <= 0 ) {
-		return 0;
+	if ( ! isset($_GET[THEWPPAGESPLUS_PARENT_QV]) ) {
+		return '';
 	}
 	$post_type = $query->get('post_type') ?: 'post';
 	if ( is_array($post_type) ) {
 		$post_type = (string) reset($post_type);
 	}
-	return thewppagesplus_is_hierarchical((string) $post_type) ? $parent : 0;
+	if ( ! thewppagesplus_is_hierarchical((string) $post_type) ) {
+		return '';
+	}
+	return sanitize_text_field( wp_unslash( (string) $_GET[THEWPPAGESPLUS_PARENT_QV] ) );
+}
+
+/**
+ * Currently-filtered parent ID for the branch view (0 if none / top / N/A).
+ */
+function thewppagesplus_current_parent_filter(WP_Query $query): int {
+	$raw = thewppagesplus_parent_filter_raw($query);
+	return ctype_digit($raw) && (int) $raw > 0 ? (int) $raw : 0;
 }
 
 /**
@@ -138,21 +150,32 @@ function thewppagesplus_subtree_ids(string $post_type, int $root): array {
 }
 
 /**
- * Parent filter: show the whole branch (the page itself + all descendants),
- * not just direct children, and keep the manual (menu) order intact.
- * Top-level hook: the main edit.php query runs after load-edit.php.
+ * Parent filter. Two modes:
+ *  - 'top'        -> only top-level pages (post_parent = 0), flat.
+ *  - a parent ID  -> the whole branch (the page itself + all descendants),
+ *                    nested, not just direct children.
+ * Either way the manual (menu) order is kept. Top-level hook: the main
+ * edit.php query runs after load-edit.php.
  */
 add_action('pre_get_posts', function (WP_Query $query) {
-	$parent = thewppagesplus_current_parent_filter($query);
-	if ( $parent <= 0 ) {
+	$raw = thewppagesplus_parent_filter_raw($query);
+	if ( '' === $raw ) {
 		return;
 	}
-	$post_type = $query->get('post_type') ?: 'page';
-	if ( is_array($post_type) ) {
-		$post_type = (string) reset($post_type);
+
+	if ( THEWPPAGESPLUS_TOP_VALUE === $raw ) {
+		$query->set('post_parent', 0);
+	} elseif ( ctype_digit($raw) && (int) $raw > 0 ) {
+		$post_type = $query->get('post_type') ?: 'page';
+		if ( is_array($post_type) ) {
+			$post_type = (string) reset($post_type);
+		}
+		$query->set('post__in', thewppagesplus_subtree_ids((string) $post_type, (int) $raw));
+		$query->set('posts_per_page', -1); // full branch; the tree renderer paginates.
+	} else {
+		return; // '0' = all parents, no filter.
 	}
-	$query->set('post__in', thewppagesplus_subtree_ids((string) $post_type, $parent));
-	$query->set('posts_per_page', -1); // full branch; the tree renderer paginates.
+
 	if ( ! isset($_GET['orderby']) ) {
 		$query->set('orderby', 'menu_order title');
 		$query->set('order', 'ASC');
@@ -433,7 +456,11 @@ function thewppagesplus_parent_filter(string $post_type, string $which): void {
 	if ( 'top' !== $which || ! thewppagesplus_is_hierarchical($post_type) ) {
 		return;
 	}
-	$selected = isset($_GET[THEWPPAGESPLUS_PARENT_QV]) ? (int) $_GET[THEWPPAGESPLUS_PARENT_QV] : 0;
+	$raw    = isset($_GET[THEWPPAGESPLUS_PARENT_QV]) ? sanitize_text_field( wp_unslash( (string) $_GET[THEWPPAGESPLUS_PARENT_QV] ) ) : '';
+	$is_top = THEWPPAGESPLUS_TOP_VALUE === $raw;
+	// -1 when "top" is active so wp_dropdown_pages doesn't auto-select "All parents" (0).
+	$selected = ctype_digit($raw) ? (int) $raw : ( $is_top ? -1 : 0 );
+
 	$dropdown = wp_dropdown_pages([
 		'post_type'         => $post_type,
 		'selected'          => $selected,
@@ -444,9 +471,16 @@ function thewppagesplus_parent_filter(string $post_type, string $which): void {
 		'sort_column'       => 'menu_order, post_title',
 		'echo'              => 0,
 	]);
-	if ( $dropdown ) {
-		echo $dropdown; // phpcs:ignore WordPress.Security.EscapeOutput -- wp_dropdown_pages returns escaped markup.
+	if ( ! $dropdown ) {
+		return;
 	}
+
+	// Insert "Top level only" right after the "All parents" option.
+	$top_option = '<option value="' . THEWPPAGESPLUS_TOP_VALUE . '"' . selected($is_top, true, false) . '>'
+		. esc_html__('— Top level only —', 'thewppagesplus') . '</option>';
+	$dropdown = preg_replace('#</option>#', '</option>' . $top_option, $dropdown, 1);
+
+	echo $dropdown; // phpcs:ignore WordPress.Security.EscapeOutput -- wp_dropdown_pages returns escaped markup.
 }
 
 /**

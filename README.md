@@ -22,7 +22,8 @@ post type) painful on larger, deeply-structured sites.
   (Pages and hierarchical CPTs):
   - a **Parent** dropdown in the table toolbar that shows the whole **branch**
     — the chosen page itself plus every descendant, nested with indentation,
-    not just its direct children;
+    not just its direct children — plus a **Top level only** option that lists
+    just the root pages (`post_parent = 0`), flat;
   - a **Parent** column showing the parent title (linked to that branch view)
     and sortable **by parent title** (self-join, not parent ID);
   - the branch keeps the **manual (menu) order** intact, not A–Z.
@@ -46,7 +47,8 @@ type. There is no settings page.
 
 - Click the **Modified** or **Parent** column header to sort.
 - Pick a parent from the **All parents** dropdown and hit **Filter** to see
-  that page and its whole branch (children, grandchildren, …), nested.
+  that page and its whole branch (children, grandchildren, …), nested. Pick
+  **Top level only** to list just the root pages.
 - Click a value in the **Parent** column to jump to that parent's branch view.
 - Search a slug or path segment (e.g. `max-your-cool`) to list every page in
   that branch.
@@ -77,6 +79,7 @@ MIT — see `LICENSE`.
 
 ## Changelog
 
+- 1.4.0 Added a **Top level only** parent-filter option (root pages, flat).
 - 1.3.0 Parent filter now shows the whole **branch** (the page itself + all
   descendants, nested) instead of only direct children.
 - 1.2.1 Search now matches the **full path** (own slug + ancestor slugs), so a
