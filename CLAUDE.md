@@ -8,15 +8,24 @@ zero-config, MIT, no settings UI.
 List-table (`edit.php`) enhancements, applied automatically to all public
 post types with a UI (minus attachments):
 
-1. Sortable **Modified** column (native `modified` orderby).
+1. Sortable **Modified** column (native `modified` orderby) + muted
+   "x ago · by Author" subline.
 2. Relative URL **path under the title** — captured during a scoped `the_title`
-   filter, injected via a footer script (see gotcha below).
-3. **Parent** filter dropdown + sortable **Parent** column for hierarchical
-   post types (`post_parent` orderby; `pre_get_posts` sets `post_parent` from
-   the `thewppagesplus_parent` query var). Filtering preserves menu order.
-4. **Duplicate** row action (`admin_action_thewppagesplus_duplicate`) — clone to
-   draft + terms + meta, nonce + `edit_post` checked. Ported from the
-   TKToolboxes `thetheme_modules/wp-admin.php` (left commented out there).
+   filter, injected via a footer script (see gotcha below). Links to the live
+   page for publish/private; plain span otherwise.
+3. **Slug/path search** via `posts_search`: injects ` OR (post_name LIKE …)`
+   just inside WP's outer search paren so a row matches normal search OR a slug
+   containing all terms. Touches only the outer wrap → robust to term count.
+4. **Parent** filter dropdown + sortable **Parent** column for hierarchical
+   post types. Filter: `pre_get_posts` sets `post_parent` from the
+   `thewppagesplus_parent` query var (preserves menu order). Sort: column maps
+   to orderby `thewppagesplus_parent`, handled by a `posts_clauses` self-join
+   on `twpp_parent` to order by the parent's **title**.
+5. **Duplicate** — single row action (`admin_action_thewppagesplus_duplicate`,
+   nonce + `edit_post`) and bulk action (`handle_bulk_actions-edit-*`). Both
+   call `thewppagesplus_duplicate_post()` (clone to draft + terms + meta).
+   Ported from the TKToolboxes `thetheme_modules/wp-admin.php` (commented out
+   there).
 
 ## Conventions / gotchas
 
