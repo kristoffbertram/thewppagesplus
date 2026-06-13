@@ -5,7 +5,7 @@
  * Author: Kristoff Bertram
  * Author URI: https://kristoffbertram.be
  * Plugin URI: https://github.com/kristoffbertram/thewppagesplus
- * Version: 1.2.1
+ * Version: 1.3.0
  * License: MIT
  * License URI: https://opensource.org/licenses/MIT
  * Text Domain: thewppagesplus
@@ -90,24 +90,98 @@ add_action('load-edit.php', function () {
 });
 
 /**
- * Parent filter + keep the manual (menu) order intact when viewing a parent.
+ * Currently-filtered parent ID for an edit.php main query (0 if none / N/A).
+ */
+function thewppagesplus_current_parent_filter(WP_Query $query): int {
+	global $pagenow;
+	if ( ! is_admin() || 'edit.php' !== $pagenow || ! $query->is_main_query() ) {
+		return 0;
+	}
+	$parent = isset($_GET[THEWPPAGESPLUS_PARENT_QV]) ? (int) $_GET[THEWPPAGESPLUS_PARENT_QV] : 0;
+	if ( $parent <= 0 ) {
+		return 0;
+	}
+	$post_type = $query->get('post_type') ?: 'post';
+	if ( is_array($post_type) ) {
+		$post_type = (string) reset($post_type);
+	}
+	return thewppagesplus_is_hierarchical((string) $post_type) ? $parent : 0;
+}
+
+/**
+ * The whole branch (the page itself + every descendant) of $root, depth-first.
+ */
+function thewppagesplus_subtree_ids(string $post_type, int $root): array {
+	global $wpdb;
+	$rows = $wpdb->get_results( $wpdb->prepare(
+		"SELECT ID, post_parent FROM {$wpdb->posts}
+		 WHERE post_type = %s AND post_status NOT IN ('auto-draft', 'inherit', 'trash')",
+		$post_type
+	) );
+	$children = [];
+	foreach ( $rows as $r ) {
+		$children[(int) $r->post_parent][] = (int) $r->ID;
+	}
+
+	$ids   = [$root];
+	$stack = [$root];
+	$guard = 0;
+	while ( $stack && $guard++ < 100000 ) {
+		$cur = array_pop($stack);
+		foreach ( $children[$cur] ?? [] as $child ) {
+			$ids[]   = $child;
+			$stack[] = $child;
+		}
+	}
+
+	return array_values( array_unique($ids) );
+}
+
+/**
+ * Parent filter: show the whole branch (the page itself + all descendants),
+ * not just direct children, and keep the manual (menu) order intact.
  * Top-level hook: the main edit.php query runs after load-edit.php.
  */
 add_action('pre_get_posts', function (WP_Query $query) {
-	global $pagenow;
-	if ( ! is_admin() || 'edit.php' !== $pagenow || ! $query->is_main_query() ) {
+	$parent = thewppagesplus_current_parent_filter($query);
+	if ( $parent <= 0 ) {
 		return;
 	}
-	$parent = isset($_GET[THEWPPAGESPLUS_PARENT_QV]) ? (int) $_GET[THEWPPAGESPLUS_PARENT_QV] : 0;
-	if ( $parent > 0 ) {
-		$query->set('post_parent', $parent);
-		// No explicit sort chosen -> mirror the manual page order, not A-Z.
-		if ( ! isset($_GET['orderby']) ) {
-			$query->set('orderby', 'menu_order title');
-			$query->set('order', 'ASC');
-		}
+	$post_type = $query->get('post_type') ?: 'page';
+	if ( is_array($post_type) ) {
+		$post_type = (string) reset($post_type);
+	}
+	$query->set('post__in', thewppagesplus_subtree_ids((string) $post_type, $parent));
+	$query->set('posts_per_page', -1); // full branch; the tree renderer paginates.
+	if ( ! isset($_GET['orderby']) ) {
+		$query->set('orderby', 'menu_order title');
+		$query->set('order', 'ASC');
 	}
 });
+
+/**
+ * Re-root the filtered branch: the admin tree renderer only nests under posts
+ * whose post_parent is 0, so present the filtered page as top-level. Done on a
+ * clone so the object cache (and the Parent column) keep the real parent.
+ */
+add_filter('the_posts', function (array $posts, WP_Query $query): array {
+	if ( empty($posts) ) {
+		return $posts;
+	}
+	$parent = thewppagesplus_current_parent_filter($query);
+	if ( $parent <= 0 ) {
+		return $posts;
+	}
+	foreach ( $posts as $i => $post ) {
+		if ( (int) $post->ID === $parent && 0 !== (int) $post->post_parent ) {
+			$clone              = clone $post;
+			$clone->post_parent = 0;
+			$posts[$i]          = $clone;
+			break;
+		}
+	}
+	return $posts;
+}, 10, 2);
 
 /**
  * IDs of posts whose full URL path (own slug + every ancestor slug) contains

@@ -20,11 +20,12 @@ post type) painful on larger, deeply-structured sites.
   matches — so titles colliding across sections is no longer a problem.
 - **Parent filter + sortable Parent column** — for hierarchical post types
   (Pages and hierarchical CPTs):
-  - a **Parent** dropdown in the table toolbar to filter to one parent's
-    direct children;
-  - a **Parent** column showing the parent title (linked to that filtered
-    view) and sortable **by parent title** (self-join, not parent ID);
-  - filtering to a parent keeps the **manual (menu) order** intact, not A–Z.
+  - a **Parent** dropdown in the table toolbar that shows the whole **branch**
+    — the chosen page itself plus every descendant, nested with indentation,
+    not just its direct children;
+  - a **Parent** column showing the parent title (linked to that branch view)
+    and sortable **by parent title** (self-join, not parent ID);
+  - the branch keeps the **manual (menu) order** intact, not A–Z.
 - **Duplicate — single + bulk** — one-click "Duplicate" on every row, plus a
   "Duplicate" bulk action. Clones content, excerpt, parent, menu order,
   taxonomy terms, and post meta into a new **draft** titled "… (Copy)"; the row
@@ -45,9 +46,8 @@ type. There is no settings page.
 
 - Click the **Modified** or **Parent** column header to sort.
 - Pick a parent from the **All parents** dropdown and hit **Filter** to see
-  only its children.
-- Click a value in the **Parent** column to jump to that parent's filtered
-  view.
+  that page and its whole branch (children, grandchildren, …), nested.
+- Click a value in the **Parent** column to jump to that parent's branch view.
 - Search a slug or path segment (e.g. `max-your-cool`) to list every page in
   that branch.
 - Select rows and choose **Duplicate** from the Bulk actions menu to clone
@@ -77,6 +77,8 @@ MIT — see `LICENSE`.
 
 ## Changelog
 
+- 1.3.0 Parent filter now shows the whole **branch** (the page itself + all
+  descendants, nested) instead of only direct children.
 - 1.2.1 Search now matches the **full path** (own slug + ancestor slugs), so a
   section search returns the whole branch — not just leaf-slug matches.
 - 1.2.0 Slug/path search, bulk Duplicate, path links to the live page,
