@@ -5,7 +5,7 @@
  * Author: Kristoff Bertram
  * Author URI: https://kristoffbertram.be
  * Plugin URI: https://github.com/kristoffbertram/thewppagesplus
- * Version: 1.2.0
+ * Version: 1.2.1
  * License: MIT
  * License URI: https://opensource.org/licenses/MIT
  * Text Domain: thewppagesplus
@@ -110,37 +110,94 @@ add_action('pre_get_posts', function (WP_Query $query) {
 });
 
 /**
- * Also match the slug when searching the list table, so you can find a page by
- * its URL segment on sites full of similarly-titled content.
+ * IDs of posts whose full URL path (own slug + every ancestor slug) contains
+ * the search term. Lets you search by any segment of the path — searching a
+ * section slug returns the whole branch beneath it, not just the leaf.
+ */
+function thewppagesplus_path_search_ids(string $post_type, string $term): array {
+	global $wpdb;
+
+	$needle  = strtolower($term);
+	$needles = array_unique(array_filter([$needle, str_replace(' ', '-', $needle)]));
+	if ( empty($needles) ) {
+		return [];
+	}
+
+	$rows = $wpdb->get_results( $wpdb->prepare(
+		"SELECT ID, post_parent, post_name FROM {$wpdb->posts}
+		 WHERE post_type = %s AND post_status NOT IN ('auto-draft', 'inherit')",
+		$post_type
+	) );
+	if ( empty($rows) ) {
+		return [];
+	}
+
+	$name = $parent = [];
+	foreach ( $rows as $r ) {
+		$name[(int) $r->ID]   = $r->post_name;
+		$parent[(int) $r->ID] = (int) $r->post_parent;
+	}
+
+	$ids = [];
+	foreach ( $rows as $r ) {
+		$segments = [];
+		$cur      = (int) $r->ID;
+		$guard    = 0;
+		while ( $cur && isset($name[$cur]) && $guard++ < 100 ) {
+			if ( '' !== $name[$cur] ) {
+				array_unshift($segments, $name[$cur]);
+			}
+			$cur = $parent[$cur];
+		}
+		$path = strtolower( implode('/', $segments) );
+		if ( '' === $path ) {
+			continue;
+		}
+		foreach ( $needles as $n ) {
+			if ( false !== strpos($path, $n) ) {
+				$ids[] = (int) $r->ID;
+				break;
+			}
+		}
+	}
+
+	return $ids;
+}
+
+/**
+ * Match the full URL path when searching the list table, so you can find pages
+ * by any segment of their path on sites full of similarly-titled content.
  */
 add_filter('posts_search', function ($search, WP_Query $query) {
 	global $pagenow, $wpdb;
 	if ( '' === $search || ! is_admin() || 'edit.php' !== $pagenow || ! $query->is_main_query() ) {
 		return $search;
 	}
-	$terms = $query->get('search_terms');
-	if ( empty($terms) ) {
-		$terms = array_filter([ (string) $query->get('s') ]);
-	}
-	if ( empty($terms) ) {
+	$term = trim( (string) $query->get('s') );
+	if ( '' === $term ) {
 		return $search;
 	}
-
-	$parts = [];
-	foreach ( $terms as $term ) {
-		$parts[] = $wpdb->prepare("{$wpdb->posts}.post_name LIKE %s", '%' . $wpdb->esc_like($term) . '%');
+	$post_type = $query->get('post_type') ?: 'post';
+	if ( is_array($post_type) ) {
+		$post_type = (string) reset($post_type);
 	}
-	$slug_clause = '(' . implode(' AND ', $parts) . ')';
 
-	// WP wraps the whole search in one trailing ")". Inject " OR (slug)" just
-	// inside it so a row matches the normal search OR a slug containing all terms.
+	$ids = thewppagesplus_path_search_ids((string) $post_type, $term);
+	if ( empty($ids) ) {
+		return $search;
+	}
+	$clause = "{$wpdb->posts}.ID IN (" . implode(',', array_map('absint', $ids)) . ')';
+
+	// WP wraps the whole search in one trailing ")". Inject " OR (ids)" just
+	// inside it so a row matches the normal search OR the path match. The outer
+	// post_status WHERE still applies, so this never leaks cross-view results.
 	$trimmed = rtrim($search);
 	$pos     = strrpos($trimmed, ')');
 	if ( false === $pos ) {
 		return $search;
 	}
 
-	return substr($trimmed, 0, $pos) . ' OR ' . $slug_clause . substr($trimmed, $pos) . ' ';
+	return substr($trimmed, 0, $pos) . ' OR ' . $clause . substr($trimmed, $pos) . ' ';
 }, 10, 2);
 
 /**

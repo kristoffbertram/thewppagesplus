@@ -1,9 +1,9 @@
 # The WP Pages Plus
 
-_1.2.0_
+_1.2.1_
 
-Fixes the three things that make WP Admin list tables (Pages, Posts, and any
-custom post type) painful on larger, deeply-structured sites.
+Fixes the things that make WP Admin list tables (Pages, Posts, and any custom
+post type) painful on larger, deeply-structured sites.
 
 ## Features
 
@@ -14,8 +14,10 @@ custom post type) painful on larger, deeply-structured sites.
   `/services/europe/pricing/`) rendered as a muted line beneath each title, so
   you can tell apart similarly-named pages at a glance. Links to the live page
   when published; drafts show their intended pretty path (no link).
-- **Slug / path search** — the list-table search box now also matches the
-  slug, so you can find a page by its URL segment even when titles collide.
+- **Full-path search** — the list-table search box also matches the full URL
+  path (a page's own slug plus every ancestor slug). Searching a section slug
+  returns the whole branch beneath it, not just the pages whose own slug
+  matches — so titles colliding across sections is no longer a problem.
 - **Parent filter + sortable Parent column** — for hierarchical post types
   (Pages and hierarchical CPTs):
   - a **Parent** dropdown in the table toolbar to filter to one parent's
@@ -32,8 +34,9 @@ custom post type) painful on larger, deeply-structured sites.
 
 WordPress list tables have no default sortable "Modified" date, never surface
 the actual URL path (so on a big site three pages all called "Overview" are
-indistinguishable), and give you no way to filter or sort by parent. This adds
-all three.
+indistinguishable), can't be searched by path, and give you no way to filter or
+sort by parent — let alone duplicate a page in one click. This fixes all of
+that.
 
 ## Usage
 
@@ -45,6 +48,10 @@ type. There is no settings page.
   only its children.
 - Click a value in the **Parent** column to jump to that parent's filtered
   view.
+- Search a slug or path segment (e.g. `max-your-cool`) to list every page in
+  that branch.
+- Select rows and choose **Duplicate** from the Bulk actions menu to clone
+  several at once.
 
 ## Technical notes
 
@@ -54,8 +61,10 @@ type. There is no settings page.
   so appended markup can't render there directly.
 - Modified sorting uses native `WP_Query` orderby; Parent sorting adds a
   `posts_clauses` self-join to order by the parent's title.
-- Slug search extends WP's `posts_search` clause (matches all terms against
-  `post_name`); existing title/content search is untouched.
+- Path search computes each post's ancestor-slug path in PHP (one lightweight
+  query per search) and OR-injects the matching IDs into WP's `posts_search`
+  clause; existing title/content search is untouched, and the outer
+  `post_status` WHERE still scopes results to the current view.
 - Duplicate (single + bulk) shares one clone routine. The row action runs
   through `admin_action_*` with a per-post nonce; both paths check `edit_post`.
 - Attachments are skipped (the media library is a separate screen).
@@ -68,6 +77,8 @@ MIT — see `LICENSE`.
 
 ## Changelog
 
+- 1.2.1 Search now matches the **full path** (own slug + ancestor slugs), so a
+  section search returns the whole branch — not just leaf-slug matches.
 - 1.2.0 Slug/path search, bulk Duplicate, path links to the live page,
   "by Author" in the Modified column, and Parent sorts by title (not ID).
 - 1.1.0 Path now renders reliably (footer-injected, was escaped by core).

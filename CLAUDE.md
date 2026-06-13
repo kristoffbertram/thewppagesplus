@@ -13,9 +13,13 @@ post types with a UI (minus attachments):
 2. Relative URL **path under the title** — captured during a scoped `the_title`
    filter, injected via a footer script (see gotcha below). Links to the live
    page for publish/private; plain span otherwise.
-3. **Slug/path search** via `posts_search`: injects ` OR (post_name LIKE …)`
-   just inside WP's outer search paren so a row matches normal search OR a slug
-   containing all terms. Touches only the outer wrap → robust to term count.
+3. **Full-path search** via `posts_search`: `thewppagesplus_path_search_ids()`
+   builds each post's ancestor-slug path in PHP (one query per search) and
+   matches the term (also space→hyphen normalised) against it; the matching IDs
+   are OR-injected as ` OR (ID IN (…))` just inside WP's outer search paren.
+   Matching the leaf slug alone was the 1.2.0 bug — descendants of a matching
+   section (their term lives in an ancestor segment) were missed. The outer
+   `post_status` WHERE keeps results scoped to the current view.
 4. **Parent** filter dropdown + sortable **Parent** column for hierarchical
    post types. Filter: `pre_get_posts` sets `post_parent` from the
    `thewppagesplus_parent` query var (preserves menu order). Sort: column maps
